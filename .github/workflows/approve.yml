@@ -1,0 +1,47 @@
+name: Approve Plugin Bot
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  repository-projects: read
+
+jobs:
+  check-approval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check User Permissions and Respond
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+            const user = comment.user.login;
+            const repo = context.repo.repo;
+            const owner = context.repo.owner;
+
+            if (comment.body.trim() !== "!approve") {
+              return;
+            }
+
+            // Get user permissions
+            const { data: permissions } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner,
+              repo,
+              username: user
+            });
+
+            const hasPushAccess = permissions.permission === "write" || permissions.permission === "admin";
+
+            // Respond based on permission level
+            const responseMessage = hasPushAccess ? "✅ Approved" : "❌ Not approved (you need push access)";
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issue.number,
+              body: responseMessage
+            });
