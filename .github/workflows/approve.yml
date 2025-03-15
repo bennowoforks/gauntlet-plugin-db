@@ -7,49 +7,96 @@ on:
 permissions:
   issues: write
   repository-projects: read
+  contents: write # Allow committing changes
 
 jobs:
   check-approval:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Check User Permissions and Respond
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const issue = context.payload.issue;
-            const comment = context.payload.comment;
+            const { issue, comment } = context.payload;
+            const { repo, owner } = context.repo;
             const user = comment.user.login;
-            const repo = context.repo.repo;
-            const owner = context.repo.owner;
+            const commentBody = comment.body.trim();
 
-            if (comment.body.trim() !== "!approve") {
-              return;
-            }
-
-            // Get user permissions
             const { data: permissions } = await github.rest.repos.getCollaboratorPermissionLevel({
               owner,
               repo,
               username: user
             });
 
-            const hasPushAccess = permissions.permission === "write" || permissions.permission === "admin";
+            const hasPushAccess = ["write", "admin"].includes(permissions.permission);
 
-            const responseMessage = hasPushAccess ? `✅ Plugin approved by @${user}` : "❌ Not approved (you do not have push access)";
+            async function createIssueComment(message) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: message
+              });
+            }
 
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: issue.number,
-              body: responseMessage
-            });
-
-            if (hasPushAccess) {
+            async function closeIssue() {
               await github.rest.issues.update({
                 owner,
                 repo,
                 issue_number: issue.number,
                 state: 'closed'
               });
+            }
+
+            if (!hasPushAccess) {
+              await createIssueComment(`❌ You do not have push access`);
+              return;
+            }
+
+            if (commentBody === "!decline") {
+              await createIssueComment(`❌ Plugin declined by @${user}`);
+              await closeIssue();
+              return;
+            }
+
+            if (commentBody === "!approve") {
+              await createIssueComment(`✅ Plugin approved by @${user}`);
+              await addToRegistry();
+              return;
+            }
+
+            async function addToRegistry() {
+              const issueBody = issue.body || "";
+              const regex = /### Plugin URL\s*\n\s*(\S+)/;
+              const match = issueBody.match(regex);
+              const pluginURL = match ? match[1] : null;
+
+              if (pluginURL) {
+                const fs = require('fs');
+                const filePath = 'database/registry.txt';
+
+                fs.appendFileSync(filePath, `${pluginURL}\n`);
+
+                await createIssueComment(`✅ Plugin added to registry: ${pluginURL}`);
+
+                await commitAndPushChanges(pluginURL);
+
+                await closeIssue();
+              } else {
+                await createIssueComment(`❌ Plugin URL not found. Could not find plugin URL.`);
+              }
+            }
+
+            async function commitAndPushChanges(pluginURL) {
+              const exec = require('@actions/exec');
+
+              await exec.exec('git', ['config', '--global', 'user.name', 'gauntlet-plugins[bot]']);
+              await exec.exec('git', ['config', '--global', 'user.email', 'gauntlet-plugins[bot]@users.noreply.github.com']);
+              await exec.exec('git', ['add', 'plugins.txt']);
+              await exec.exec('git', ['commit', '-m', `Add plugin: ${pluginURL}`]);
+              await exec.exec('git', ['push']);
             }
