@@ -36,8 +36,7 @@ jobs:
 
             const hasPushAccess = permissions.permission === "write" || permissions.permission === "admin";
 
-            // Respond based on permission level
-            const responseMessage = hasPushAccess ? "✅ Approved" : "❌ Not approved (you need push access)";
+            const responseMessage = hasPushAccess ? `✅ Plugin approved by @${user}` : "❌ Not approved (you do not have push access)";
 
             await github.rest.issues.createComment({
               owner,
@@ -45,3 +44,12 @@ jobs:
               issue_number: issue.number,
               body: responseMessage
             });
+
+            if (hasPushAccess) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }
