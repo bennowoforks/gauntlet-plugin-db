@@ -66,6 +66,7 @@ jobs:
             if (commentBody === "!approve") {
               await createIssueComment(`✅ Plugin approved by @${user}`);
               await addToRegistry();
+              await closeIssue();
               return;
             }
 
