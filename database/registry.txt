@@ -1,2 +1,3 @@
 https://github.com/Mrid22/gauntlet-colors
 https://github.com/BennoCrafter/gauntlet-brew
+https://github.com/BennoCrafter/PythonStructure
