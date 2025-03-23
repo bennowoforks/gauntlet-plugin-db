@@ -93,23 +93,40 @@ jobs:
             }
         id: approve_plugin
 
-      - name: Install toml2json and jq
+      - name: Install jq and dependencies for TOML to JSON
         run: |
           sudo apt-get update
           sudo apt-get install -y jq
-          curl -L -o /usr/local/bin/toml2json https://github.com/pappasam/toml2json/releases/download/v1.0.0/toml2json-linux-amd64
-          sudo chmod +x /usr/local/bin/toml2json
+          npm install toml
 
-      - name: Convert TOML to JSON
+      - name: Convert TOML to JSON using Node.js
         run: |
           # Get plugin URL from curl
-          PLUGIN_URL="${{ steps.approve_plugin.outputs.plugin_url }}"
+          const pluginUrl = "${{ steps.approve_plugin.outputs.plugin_url }}";
 
           # Convert GitHub URL to raw URL
-          RAW_URL=$(echo "$PLUGIN_URL" | sed 's/github.com/raw.githubusercontent.com/' | sed 's/$/\/main\/gauntlet.toml/')
+          const rawUrl = pluginUrl.replace('github.com', 'raw.githubusercontent.com') + '/main/gauntlet.toml';
 
-          # Fetch and convert TOML
-          curl -L "$RAW_URL" | toml2json > data.json
+          # Fetch TOML file
+          const axios = require('axios');
+          const toml = require('toml');
+          const fs = require('fs');
+
+          axios.get(rawUrl)
+            .then(response => {
+              const tomlData = response.data;
+              const jsonData = toml.parse(tomlData);
+              const outputPath = 'data.json';
+
+              // Write JSON to file
+              fs.writeFileSync(outputPath, JSON.stringify(jsonData, null, 2));
+              console.log('TOML converted to JSON:', jsonData);
+            })
+            .catch(error => {
+              console.error('Error fetching or parsing TOML:', error);
+              process.exit(1);
+            });
+        shell: node
 
       - name: Add object to JSON list
         run: |
